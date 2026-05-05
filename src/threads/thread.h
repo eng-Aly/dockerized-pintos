@@ -93,6 +93,10 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    int nice;                  /* Niceness value (-20 to 20) */
+    int recent_cpu;            /* Recent CPU usage (fixed-point) */
+    int64_t wakeup_tick;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -125,6 +129,20 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+void thread_wakeup(int64_t current_tick);
+
+
+/* Add to threads/thread.h */
+void mlfqs_calculate_priority(struct thread *t);
+void mlfqs_increment_recent_cpu(void);
+void mlfqs_update_recent_cpu(struct thread *t, void *aux);
+void mlfqs_update_load_avg(void);
+
+
+bool thread_priority_cmp (const struct list_elem *a,
+                          const struct list_elem *b,
+                          void *aux);
+
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -133,6 +151,10 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
+
+/* Function declarations */
+int thread_get_recent_cpu(void);
+int thread_get_load_avg(void);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
