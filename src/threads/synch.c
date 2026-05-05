@@ -119,15 +119,14 @@ sema_up (struct semaphore *sema)
   if (!list_empty (&sema->waiters)) 
     {
       list_sort (&sema->waiters, thread_priority_higher, NULL);
+
       t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
       
-      sema->value++;
+      
       thread_unblock (t);
     }
-  else 
-    {
-      sema->value++;
-    }
+    sema->value++;
+    
 
   /* Safely restore interrupt level FIRST */
   intr_set_level (old_level);
@@ -211,9 +210,10 @@ donate_priority_chain (struct thread *t, int new_prio)
 {
   int depth = 0;
 
-  while (t != NULL && depth < donation_depth_num && t->priority < new_prio)
+  while (t != NULL && depth < donation_depth_num)
     {
-      t->total_donated_original_priority = new_prio;
+      if (t->priority < new_prio)
+        t->priority = new_prio;
 
       if (t->waiting_lock == NULL)
         break;
@@ -238,22 +238,23 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  struct *currrent_thread=thread_current(); //thread getter to add the donation chain to it 
+  struct thread *cur = thread_current ();
 
-    /* Priority donation (only if lock is held) */
   if (lock->holder != NULL)
     {
       cur->waiting_lock = lock;
-      list_push_back (&lock->holder->donations, &cur->donation_elem);
+
+      list_push_back (&lock->holder->donations,
+                      &cur->donation_elem);
+
       donate_priority_chain (lock->holder, cur->priority);
     }
 
   sema_down (&lock->semaphore);
-  /* After acquiring the lock */
+
   cur->waiting_lock = NULL;
   lock->holder = cur;
 }
-
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
    thread.
@@ -287,7 +288,7 @@ lock_release (struct lock *lock)
 
   struct thread *cur = thread_current ();
 
-  /* 1. Remove donations related to this lock */
+  /* remove donations tied to this lock */
   struct list_elem *e = list_begin (&cur->donations);
 
   while (e != list_end (&cur->donations))
@@ -295,29 +296,28 @@ lock_release (struct lock *lock)
       struct thread *t = list_entry (e, struct thread, donation_elem);
 
       if (t->waiting_lock == lock)
-        {
-          e = list_remove (e);
-        }
+        e = list_remove (e);
       else
-        {
-          e = list_next (e);
-        }
+        e = list_next (e);
     }
 
-  /* 2. Recompute priority */
+  /* restore base priority */
   cur->priority = cur->total_donated_original_priority;
 
+  /* re-apply remaining donations */
   if (!list_empty (&cur->donations))
     {
       struct thread *max_t = list_entry (
-          list_max (&cur->donations, thread_priority_higher, NULL),
-          struct thread, donation_elem);
+          list_max (&cur->donations,
+                    thread_priority_higher,
+                    NULL),
+          struct thread,
+          donation_elem);
 
       if (max_t->priority > cur->priority)
         cur->priority = max_t->priority;
     }
 
-  /* 3. Release lock */
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
