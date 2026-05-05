@@ -31,6 +31,7 @@
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/flags.h"
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -200,6 +201,28 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
+
+/* Helper function to add priority donations of current waiting chain
+
+*/
+
+static void
+donate_priority_chain (struct thread *t, int new_prio)
+{
+  int depth = 0;
+
+  while (t != NULL && depth < donation_depth_num && t->priority < new_prio)
+    {
+      t->total_donated_original_priority = new_prio;
+
+      if (t->waiting_lock == NULL)
+        break;
+
+      t = t->waiting_lock->holder;
+      depth++;
+    }
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -215,8 +238,20 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct *currrent_thread=thread_current(); //thread getter to add the donation chain to it 
+
+    /* Priority donation (only if lock is held) */
+  if (lock->holder != NULL)
+    {
+      cur->waiting_lock = lock;
+      list_push_back (&lock->holder->donations, &cur->donation_elem);
+      donate_priority_chain (lock->holder, cur->priority);
+    }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  /* After acquiring the lock */
+  cur->waiting_lock = NULL;
+  lock->holder = cur;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -250,10 +285,42 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  struct thread *cur = thread_current ();
+
+  /* 1. Remove donations related to this lock */
+  struct list_elem *e = list_begin (&cur->donations);
+
+  while (e != list_end (&cur->donations))
+    {
+      struct thread *t = list_entry (e, struct thread, donation_elem);
+
+      if (t->waiting_lock == lock)
+        {
+          e = list_remove (e);
+        }
+      else
+        {
+          e = list_next (e);
+        }
+    }
+
+  /* 2. Recompute priority */
+  cur->priority = cur->total_donated_original_priority;
+
+  if (!list_empty (&cur->donations))
+    {
+      struct thread *max_t = list_entry (
+          list_max (&cur->donations, thread_priority_higher, NULL),
+          struct thread, donation_elem);
+
+      if (max_t->priority > cur->priority)
+        cur->priority = max_t->priority;
+    }
+
+  /* 3. Release lock */
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
-
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */

@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/flags.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -83,18 +85,23 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    tid_t tid;                            /* Thread identifier. */
+    enum thread_status status;            /* Thread state. */
+    char name[16];                        /* Name (for debugging purposes). */
+    uint8_t *stack;                       /* Saved stack pointer. */
+    int priority;                         /* Priority. */
+    int total_donated_original_priority;  /*donated priority indicate the total*/
+    struct list_elem allelem;             /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     /* Owned by thread.c and timer.c. */
     int64_t sleep_ticks;                /* Ticks until wakeup. */
-
+   
+    //added for priority donations
+    struct lock *waiting_lock; /* Lock this thread is blocked on. */
+    struct list donations;     /* Donors waiting on locks I hold. */
+    struct list_elem donation_elem;
    
       /* Owned by synch.c. */
 #ifdef USERPROG
