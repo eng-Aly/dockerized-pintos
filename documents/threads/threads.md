@@ -22,8 +22,6 @@ The implementation covers:
 
 ## Design Goals
 
-The project was designed with the following goals:
-
 1. Keep the scheduler behavior deterministic and priority-based.
 2. Apply donation only when a thread is actually blocked on a lock.
 3. Support donation chains such as `H -> M -> L`.
@@ -45,6 +43,46 @@ The `struct thread` was extended to support donation and MLFQS scheduling.
 * `donations`: list of donor threads waiting on locks held by this thread
 * `donation_elem`: list element used inside the donations list
 
+
+```
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                            /* Thread identifier. */
+    enum thread_status status;            /* Thread state. */
+    char name[16];                        /* Name (for debugging purposes). */
+    uint8_t *stack;                       /* Saved stack pointer. */
+    int priority;                         /* Priority. */
+    int total_donated_original_priority;  /*donated priority indicate the total*/
+    struct list_elem allelem;             /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+    /* Owned by thread.c and timer.c. */
+    int64_t sleep_ticks;                /* Ticks until wakeup. */
+   
+    //added for priority donations
+    struct lock *waiting_lock; /* Lock this thread is blocked on. */
+    struct list donations;     /* Donors waiting on locks I hold. */
+    struct list_elem donation_elem;
+
+    int nice;                  /* Niceness value (-20 to 20) */
+    int recent_cpu;            /* Recent CPU usage (fixed-point) */
+    int64_t wakeup_tick;
+
+   
+      /* Owned by synch.c. */
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+
+```
+
 ### MLFQS-related fields
 
 * `nice`: thread niceness value
@@ -63,7 +101,7 @@ effective priority = max(base priority, highest donated priority)
 
 Where:
 
-* **base priority** is stored in `total_donated_original_priority`
+* **base priority** is stored in `total_donated_original_priority`   //name was needed to change
 * **effective priority** is stored in `priority`
 * donation is tracked through the `donations` list
 
@@ -84,6 +122,34 @@ When a thread attempts to acquire a lock:
 5. The thread blocks using `sema_down()`.
 6. After waking up, it becomes the lock holder.
 
+
+```
+void
+lock_acquire (struct lock *lock)
+{
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
+
+  struct thread *cur = thread_current ();
+
+  if (!thread_mlfqs && lock->holder != NULL)
+    {
+      cur->waiting_lock = lock;
+
+      list_push_back (&lock->holder->donations,
+                      &cur->donation_elem);
+
+      donate_priority_chain (lock->holder, cur->priority);
+    }
+
+  sema_down (&lock->semaphore);
+
+  cur->waiting_lock = NULL;
+  lock->holder = cur;
+}
+```
+
 ### `lock_release()`
 
 When a thread releases a lock:
@@ -93,6 +159,54 @@ When a thread releases a lock:
 3. Remaining donations are checked.
 4. The highest remaining donated priority is applied.
 5. The semaphore is released with `sema_up()`.
+
+```
+void
+lock_release (struct lock *lock)
+{
+  ASSERT (lock != NULL);
+  ASSERT (lock_held_by_current_thread (lock));
+
+  struct thread *cur = thread_current ();
+
+  /* remove donations tied to this lock */
+  struct list_elem *e = list_begin (&cur->donations);
+
+  while (e != list_end (&cur->donations))
+    {
+      struct thread *t = list_entry (e, struct thread, donation_elem);
+
+      if (t->waiting_lock == lock)
+        e = list_remove (e);
+      else
+        e = list_next (e);
+    }
+
+  /* restore base priority */
+  cur->priority = cur->total_donated_original_priority;
+
+  /* re-apply remaining donations */
+  if (!list_empty (&cur->donations))
+    {
+      struct thread *max_t = list_entry (
+          list_max (&cur->donations,
+                    thread_priority_higher,
+                    NULL),
+          struct thread,
+          donation_elem);
+
+      if (max_t->priority > cur->priority)
+        cur->priority = max_t->priority;
+    }
+
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
+  if (!thread_mlfqs) {
+        /* all your priority restoration code stays here */
+  }
+}
+
+```
 
 ---
 
@@ -232,26 +346,14 @@ These results confirm that the implementation supports:
 
 ## Merge and Git Notes
 
-During development, a merge conflict occurred between the donation work and the MLFQS branch. The final structure keeps both features in the codebase, with clear runtime separation based on `thread_mlfqs`.
+The repository was forked, and development was divided into multiple feature branches derived from a common base:
+* `phase1/devel`
+* `phase1/priority_inheritance`
+* `phase1/priority_scheduler`
+* `phase1/alarm_clock`
+* `phase1/MLFQS`
 
-General merge strategy used:
+every branch was from the devel and merged to it after passing the tests
 
-* keep donation fields in `struct thread`
-* keep MLFQS fields in `struct thread`
-* guard donation logic with `if (!thread_mlfqs)`
-* preserve semaphore and scheduling behavior
 
 ---
-
-## Final Outcome
-
-The project now supports:
-
-* priority-based scheduling
-* priority donation for locks
-* nested donation chains
-* multiple donors
-* correct priority restoration
-* compatibility with MLFQS mode
-
-This makes the Pintos thread subsystem behave correctly under both lock contention and priority-based scheduling scenarios.
