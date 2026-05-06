@@ -142,7 +142,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-void thread_wakeup(int64_t current_tick);
+
 
 
 /* Add to threads/thread.h */
