@@ -144,8 +144,6 @@ void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
 
-
-/* Add to threads/thread.h */
 void mlfqs_calculate_priority(struct thread *t);
 void mlfqs_increment_recent_cpu(void);
 void mlfqs_update_recent_cpu(struct thread *t, void *aux);
