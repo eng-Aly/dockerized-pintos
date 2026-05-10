@@ -142,10 +142,8 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-void thread_wakeup(int64_t current_tick);
 
 
-/* Add to threads/thread.h */
 void mlfqs_calculate_priority(struct thread *t);
 void mlfqs_increment_recent_cpu(void);
 void mlfqs_update_recent_cpu(struct thread *t, void *aux);

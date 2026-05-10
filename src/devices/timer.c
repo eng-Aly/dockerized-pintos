@@ -23,8 +23,6 @@ static int64_t ticks;
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
-// /* Semaphore used to wake up sleeping threads. */
-// static struct semaphore timer_sema;
 /* List of sleeping threads. */
 static struct list sleeping_threads;
 
@@ -118,7 +116,6 @@ timer_sleep (int64_t ticks)
                       timer_sleep_less, NULL);
   thread_block ();
   intr_set_level (old_level);
-  // sema_down (&timer_sema);
   // while (timer_elapsed (start) < ticks) 
   //   thread_yield ();
 }
@@ -217,8 +214,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
   
   intr_set_level (old_level);
 
-
-  thread_wakeup(ticks);
 
   if (thread_mlfqs) {
       mlfqs_increment_recent_cpu();           /* every tick */

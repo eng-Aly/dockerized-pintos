@@ -737,21 +737,4 @@ void mlfqs_update_load_avg(void) {
     );
 }
 
-/* Wakes up all threads whose wakeup_tick <= current ticks */
-void
-thread_wakeup (int64_t current_tick)
-{
-    struct list_elem *e = list_begin(&all_list);
-    while (e != list_end(&all_list))
-    {
-        struct thread *t = list_entry(e, struct thread, allelem);
-        e = list_next(e);
-        if (t->status == THREAD_BLOCKED &&
-            t->wakeup_tick > 0 &&
-            t->wakeup_tick <= current_tick)
-        {
-            t->wakeup_tick = 0;
-            thread_unblock(t);
-        }
-    }
-}
+

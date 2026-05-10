@@ -321,9 +321,6 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  if (!thread_mlfqs) {
-        /* all your priority restoration code stays here */
-  }
 }
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
