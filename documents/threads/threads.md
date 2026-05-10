@@ -111,7 +111,7 @@ This design avoids treating donation as a sum and instead keeps priority inherit
 
 ## Lock Donation Flow
 
-### `lock_acquire()`
+### `lock_acquire(struct lock *lock )`
 
 When a thread attempts to acquire a lock:
 
@@ -150,7 +150,7 @@ lock_acquire (struct lock *lock)
 }
 ```
 
-### `lock_release()`
+### `lock_release(struct lock *lock)`
 
 When a thread releases a lock:
 
@@ -208,7 +208,28 @@ lock_release (struct lock *lock)
 
 ```
 
+### `donate_priority_chain (struct thread *t, int new_prio)`
+
+
+donate_priority_chain (struct thread *t, int new_prio)
+{
+  int depth = 0;
+
+  while (t != NULL && depth < donation_depth_num)
+    {
+      if (t->priority < new_prio)
+        t->priority = new_prio;
+
+      if (t->waiting_lock == NULL)
+        break;
+
+      t = t->waiting_lock->holder;
+      depth++;
+    }
+}
+
 ---
+
 
 ## Nested Donation
 
