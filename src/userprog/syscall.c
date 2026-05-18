@@ -250,7 +250,7 @@ sys_exec (const char *cmd_line)
 static int
 sys_filesize (int fd)
 {
-  struct file *f = thread_current ()->fd_table[fd].file;
+  struct file *f = thread_current ()->fd_table[fd]->file;
 
   if (f == NULL)
     {
@@ -283,7 +283,7 @@ sys_read (int fd, void *buffer, unsigned size)
       return size;
     }
 
-  struct file *f = thread_current ()->fd_table[fd].file;
+  struct file *f = thread_current ()->fd_table[fd]->file;
 
   if (f == NULL)
     {
@@ -310,7 +310,7 @@ sys_write (int fd, const void *buffer, unsigned size)
       return size;
     }
 
-  struct file *f = thread_current ()->fd_table[fd].file;
+  struct file *f = thread_current ()->fd_table[fd]->file;
 
   if (f == NULL)
     {
@@ -338,7 +338,7 @@ get_file (int fd)
       return NULL;
     }
 
-  return t->fd_table[fd].file;
+  return t->fd_table[fd]->file;
 }
 
 /* ---------- File Syscalls ---------- */
@@ -387,7 +387,7 @@ sys_close (int fd)
       return;
     }
 
-  struct file *f = t->fd_table[fd].file;
+  struct file *f = t->fd_table[fd]->file;
 
   if (f == NULL)
     {
@@ -400,6 +400,6 @@ sys_close (int fd)
 
   lock_release (&filesys_lock);
 
-  t->fd_table[fd].file = NULL;
-  t->fd_table[fd].fd = -1;
+  t->fd_table[fd]->file = NULL;
+  t->fd_table[fd]->fd = -1;
 }
