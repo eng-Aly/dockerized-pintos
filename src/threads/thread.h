@@ -109,7 +109,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-
+   struct file *exec_file;             /* Executable file. */
     struct file_descriptor *fd_table[128];         /* Array of open files */
     int next_fd;                        /* Tracks the next available FD */
 #endif

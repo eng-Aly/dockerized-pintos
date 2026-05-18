@@ -163,6 +163,11 @@ process_exit (void)
          that's been freed (and cleared). */
 		cur->pagedir = NULL;
 		pagedir_activate (NULL);
+		if (cur->exec_file != NULL)
+		{
+			file_allow_write(cur->exec_file);
+			file_close(cur->exec_file);
+		}
 		pagedir_destroy (pd);
 	}
 }
@@ -281,7 +286,7 @@ load (const char *file_name, void (**eip) (void), void **esp, char **save_ptr)
 		goto done;
 	}
 	file_deny_write(file);
-
+	thread_current()->exec_file = file;
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -365,8 +370,10 @@ load (const char *file_name, void (**eip) (void), void **esp, char **save_ptr)
 
 	done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
-	return success;
+		if (!success && file != NULL)
+			file_close(file);
+
+		return success;
 }
 
 /* load() helpers. */

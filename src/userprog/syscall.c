@@ -66,9 +66,9 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
-  int esp = validate_uaddr ((const void *) f->esp);
+  validate_buffer(f->esp, sizeof(int));
 
-  int syscall_num = *(int *) esp;
+  int syscall_num = *(int *)f->esp;
 
   int args[3];
 
@@ -174,7 +174,7 @@ validate_buffer (const void *buffer, unsigned size)
 
   for (i = 0; i < size; i++)
     {
-      verify_ptr ((const void *) (buf + i));
+      validate_uaddr ((const void *) (buf + i));
     }
 }
 
@@ -187,9 +187,7 @@ validate_string (const char *str)
   while (validated_str != 0)
     {
       validated_str =
-        *(char *) validate_uaddr ((const void *) str);
-
-      str++;
+          *(char *)validate_uaddr((const void *)++str);
     }
 }
 
