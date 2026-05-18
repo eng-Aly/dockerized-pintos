@@ -478,6 +478,14 @@ init_thread (struct thread *t, const char *name, int priority)
         t->fd_table[i] = NULL;
     }
     t->next_fd = 2; // 0 and 1 are reserved for standard input and output
+
+	list_init(&t->children);
+
+	t->parent = NULL;
+
+	t->cp = NULL;
+
+	t->exec_file = NULL;
 #endif
 
 	old_level = intr_disable ();

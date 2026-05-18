@@ -2,17 +2,11 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
-#include "threads/synch.h" // <-- for semaphore
-/* Process management. */
-struct exec_info
+struct exec_args
 {
-    char *file_name;
+    char *cmd_line;
 
-    struct semaphore load_sema;
-
-    bool load_success;
-
-    tid_t tid;
+    struct child_process *cp;
 };
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);

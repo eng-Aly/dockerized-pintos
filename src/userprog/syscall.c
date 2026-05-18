@@ -96,6 +96,10 @@ syscall_handler (struct intr_frame *f)
         break;
 
       case SYS_WAIT:
+        get_args(f->esp, args, 1);
+
+        f->eax = process_wait((tid_t) args[0]);
+
         break;
 
       /* ---------- File Syscalls ---------- */
@@ -181,13 +185,14 @@ validate_buffer (const void *buffer, unsigned size)
 static void
 validate_string (const char *str)
 {
-  char validated_str =
-    *(char *) validate_uaddr ((const void *) str);
-
-  while (validated_str != 0)
+    while (true)
     {
-      validated_str =
-          *(char *)validate_uaddr((const void *)++str);
+        validate_uaddr(str);
+
+        if (*str == '\0')
+            return;
+
+        str++;
     }
 }
 
@@ -196,15 +201,15 @@ validate_string (const char *str)
 static void
 get_args (void *esp, int *args, int count)
 {
-  int i;
+    int i;
 
-  for (i = 0; i < count; i++)
+    for (i = 0; i < count; i++)
     {
-      int *arg_ptr = (int *) esp + i + 1;
+        int *arg_ptr = (int *) esp + i + 1;
 
-      verify_ptr ((const void *) arg_ptr);
+        validate_buffer(arg_ptr, sizeof(int));
 
-      args[i] = *arg_ptr;
+        args[i] = *arg_ptr;
     }
 }
 

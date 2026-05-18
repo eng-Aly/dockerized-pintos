@@ -29,61 +29,86 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp, char** s
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name)
 {
-	struct exec_info *exec;
-	tid_t tid;
+    char *fn_copy;
+    tid_t tid;
 
+    struct child_process *cp =
+        malloc(sizeof(struct child_process));
 
-	/* allocate shared structure */
-	exec = malloc(sizeof(struct exec_info));
+    if (cp == NULL)
+        return TID_ERROR;
 
-	if (exec == NULL)
-		return TID_ERROR;
-	/* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
-	exec->file_name = palloc_get_page (0);
-	if (exec->file_name == NULL)
-	{
-		free(exec);
-		return TID_ERROR;
-	}
-	strlcpy (exec->file_name, file_name, PGSIZE);
+    cp->pid = TID_ERROR;
 
-	/* init synchronization */
-	sema_init(&exec->load_sema, 0);
+    cp->exit_status = -1;
 
-	exec->load_success = false;
+    cp->waited = false;
+    cp->exited = false;
 
-	/* Parsed file name */
-	char *save_ptr;
-	file_name = strtok_r((char *) file_name, " ", &save_ptr);
+    cp->load_success = false;
 
-	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, start_process, exec);
-	if (tid == TID_ERROR)
-	{
-		palloc_free_page (exec->file_name);
-		free(exec);
-		return TID_ERROR;
-	}
+    sema_init(&cp->load_sema, 0);
+    sema_init(&cp->wait_sema, 0);
 
+    list_push_back(&thread_current()->children,
+                    &cp->elem);
 
-	exec->tid = tid;
+    fn_copy = palloc_get_page(0);
 
-	/* WAIT HERE until child finishes load() */
-	sema_down(&exec->load_sema);
+    if (fn_copy == NULL)
+    {
+        free(cp);
+        return TID_ERROR;
+    }
 
-	/* child tells us load failed */
-	if (!exec->load_success)
-	{
-		free(exec);
-		return -1;
-	}
+    strlcpy(fn_copy, file_name, PGSIZE);
 
+    struct exec_args *args =
+        malloc(sizeof(struct exec_args));
 
-	free(exec);
-	return tid;
+    if (args == NULL)
+    {
+        palloc_free_page(fn_copy);
+        free(cp);
+        return TID_ERROR;
+    }
+
+    args->cmd_line = fn_copy;
+    args->cp = cp;
+
+    char file_name_copy[NAME_MAX + 1];
+
+    strlcpy(file_name_copy, file_name,
+            sizeof(file_name_copy));
+
+    char *save_ptr;
+
+    char *prog_name =
+        strtok_r(file_name_copy, " ", &save_ptr);
+
+    tid = thread_create(prog_name,
+                        PRI_DEFAULT,
+                        start_process,
+                        args);
+
+    if (tid == TID_ERROR)
+    {
+        palloc_free_page(fn_copy);
+        free(args);
+        free(cp);
+        return TID_ERROR;
+    }
+
+    cp->pid = tid;
+
+    sema_down(&cp->load_sema);
+
+    if (!cp->load_success)
+        return -1;
+
+    return tid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -91,8 +116,10 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-	struct exec_info *exec = file_name_;
-	char *file_name = exec->file_name;
+	struct exec_args *args = file_name_;
+	struct child_process *cp = args->cp;
+	thread_current()->cp = cp;
+	char *file_name = args->cmd_line;
 
 	struct intr_frame if_;
 	bool success;
@@ -107,13 +134,15 @@ start_process (void *file_name_)
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
 	success = load (file_name, &if_.eip, &if_.esp, &save_ptr);
-	exec->load_success = success;
+	cp->load_success = success;
 
-	/* wake parent */
-	sema_up(&exec->load_sema);
+	sema_up(&cp->load_sema);
 
+	char *cmd_line = args->cmd_line;
+	
+	free(args);
 	/* If load failed, quit. */
-	palloc_free_page(exec->file_name);
+	palloc_free_page(cmd_line);
 	if (!success)
 		thread_exit ();
 
@@ -137,9 +166,42 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid)
 {
-	return -1;
+    struct thread *cur = thread_current();
+
+    struct list_elem *e;
+
+    for (e = list_begin(&cur->children);
+         e != list_end(&cur->children);
+         e = list_next(e))
+    {
+        struct child_process *cp =
+            list_entry(e,
+                       struct child_process,
+                       elem);
+
+        if (cp->pid == child_tid)
+        {
+            if (cp->waited)
+                return -1;
+
+            cp->waited = true;
+
+            if (!cp->exited)
+                sema_down(&cp->wait_sema);
+
+            int status = cp->exit_status;
+
+            list_remove(&cp->elem);
+
+            free(cp);
+
+            return status;
+        }
+    }
+
+    return -1;
 }
 
 /* Free the current process's resources. */
@@ -147,6 +209,14 @@ void
 process_exit (void)
 {
 	struct thread *cur = thread_current ();
+	if (cur->cp != NULL)
+	{
+		cur->cp->exit_status = cur->exit_status;
+
+		cur->cp->exited = true;
+
+		sema_up(&cur->cp->wait_sema);
+	}
 	uint32_t *pd;
 
 	/* Destroy the current process's page directory and switch back
@@ -161,13 +231,16 @@ process_exit (void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
-		cur->pagedir = NULL;
-		pagedir_activate (NULL);
+
 		if (cur->exec_file != NULL)
 		{
 			file_allow_write(cur->exec_file);
 			file_close(cur->exec_file);
 		}
+		cur->pagedir = NULL;
+
+		pagedir_activate (NULL);
+		
 		pagedir_destroy (pd);
 	}
 }
