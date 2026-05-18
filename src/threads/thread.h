@@ -23,7 +23,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+ 
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -80,6 +80,16 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+//added ------------------------------------------------------------------------
+struct file_descriptor {
+    int fd;
+    struct file *file;
+};
+
+//added ------------------------------------------------------------------------
+
+
 struct thread
   {
     /* Owned by thread.c. */
