@@ -472,6 +472,14 @@ init_thread (struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
+#ifdef USERPROG
+    /* --- HASSAN'S ADDITIONS --- */
+    for (int i = 0; i < 128; i++) {
+        t->fd_table[i] = NULL;
+    }
+    t->next_fd = 2; // 0 and 1 are reserved for standard input and output
+#endif
+
 	old_level = intr_disable ();
 	list_push_back (&all_list, &t->allelem);
 	intr_set_level (old_level);

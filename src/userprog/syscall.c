@@ -13,6 +13,12 @@
 #include "devices/shutdown.h"
 
 
+/* --- HASSAN'S ADDITIONS --- */
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "devices/input.h"
+/* ------------------------- */
+
 #define ERROR -1
 
 
@@ -31,12 +37,21 @@ static void sys_halt (void);
 static void sys_exit (int status);
 static tid_t sys_exec (const char *cmd_line);
 
+static int sys_filesize (int fd);
+static int sys_read (int fd, void *buffer, unsigned size);
+static int sys_write (int fd, const void *buffer, unsigned size);
+
+#define ERROR -1
+
+struct lock fs_lock;
+
 /* ---------- Init ---------- */
 
 void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&fs_lock);
 }
 
 /* ---------- Syscall Handler ---------- */
@@ -71,6 +86,23 @@ syscall_handler (struct intr_frame *f)
 
       case SYS_WAIT:
 
+        break;
+  
+      case SYS_FILESIZE:
+        get_args(f->esp, args, 1);
+        f->eax = sys_filesize(args[0]);
+        break;
+
+      case SYS_READ:
+        get_args(f->esp, args, 3);
+        validate_buffer(args[1], args[2]);
+        f->eax = sys_read(args[0], (void *) args[1], args[2]);
+        break;
+
+      case SYS_WRITE:
+        get_args(f->esp, args, 3);
+        validate_buffer(args[1], args[2]);
+        f->eax = sys_write(args[0], (const void *) args[1], args[2]);
         break;
 
       default:
@@ -162,4 +194,58 @@ sys_exec (const char *cmd_line)
   validate_string(cmd_line);
 
   return process_execute(cmd_line);
+}
+
+static int 
+sys_filesize (int fd) 
+{
+    struct file *f = thread_current()->fd_table[fd];
+    if (f == NULL) return -1;
+    
+    lock_acquire(&fs_lock);
+    int size = file_length(f);
+    lock_release(&fs_lock);
+    
+    return size;
+}
+
+static int 
+sys_read (int fd, void *buffer, unsigned size) 
+{
+    validate_buffer(buffer, size);
+    if (fd == 0) { 
+        uint8_t *buf = (uint8_t *) buffer;
+        for (unsigned i = 0; i < size; i++) {
+            buf[i] = input_getc();
+        }
+        return size;
+    }
+    
+    struct file *f = thread_current()->fd_table[fd];
+    if (f == NULL) return -1;
+    
+    lock_acquire(&fs_lock);
+    int bytes_read = file_read(f, buffer, size);
+    lock_release(&fs_lock);
+    
+    return bytes_read;
+}
+
+static int 
+sys_write (int fd, const void *buffer, unsigned size) 
+{
+    validate_buffer(buffer, size);
+    if (fd == 1) { 
+        putbuf(buffer, size);
+        return size;
+    }
+    
+    struct file *f = thread_current()->fd_table[fd];
+    if (f == NULL) return -1;
+    
+    lock_acquire(&fs_lock);
+    int bytes_written = file_write(f, buffer, size);
+    lock_release(&fs_lock);
+    
+    return bytes_written;
 }
