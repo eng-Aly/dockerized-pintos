@@ -24,6 +24,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define MAX_FILES 128                   //added-------------------------------------------------------------------------------------
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -80,6 +82,17 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+
+//added ------------------------------------------------------------------------
+struct file_descriptor {
+    int fd;
+    struct file *file;
+};
+
+//added ------------------------------------------------------------------------
+
+
 struct thread
   {
     /* Owned by thread.c. */
@@ -92,10 +105,18 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
+   /*exit status*/
+   int exit_status;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+    // addedd ------------------------------------------------------------------------------------
+    /* File descriptor table */
+    struct file_descriptor fd_table[MAX_FILES];
+    int next_fd;
+    // addedd ------------------------------------------------------------------------------------
+
 #endif
 
     /* Owned by thread.c. */
