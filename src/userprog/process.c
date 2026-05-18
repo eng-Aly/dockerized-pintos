@@ -17,7 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#include "userprog/syscall.h"
 /* Used for setup_stack */
 static void push_stack(int order, void **esp, char *token, char **argv, int argc);
 
@@ -209,6 +209,8 @@ void
 process_exit (void)
 {
 	struct thread *cur = thread_current ();
+
+	/* notify parent waiting in wait() */
 	if (cur->cp != NULL)
 	{
 		cur->cp->exit_status = cur->exit_status;
@@ -217,31 +219,52 @@ process_exit (void)
 
 		sema_up(&cur->cp->wait_sema);
 	}
+
+	/* close all open file descriptors */
+	int i;
+
+	for (i = 2; i < MAX_FILES; i++)
+	{
+		if (cur->fd_table[i] != NULL)
+		{
+			if (cur->fd_table[i]->file != NULL)
+			{
+				lock_acquire(&filesys_lock);
+
+				file_close(cur->fd_table[i]->file);
+
+				lock_release(&filesys_lock);
+			}
+
+			free(cur->fd_table[i]);
+
+			cur->fd_table[i] = NULL;
+		}
+	}
+
 	uint32_t *pd;
 
-	/* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
+	/* destroy process page directory */
 	pd = cur->pagedir;
+
 	if (pd != NULL)
 	{
-		/* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-
+		/* release executable write protection */
 		if (cur->exec_file != NULL)
 		{
 			file_allow_write(cur->exec_file);
+
 			file_close(cur->exec_file);
+
+			cur->exec_file = NULL;
 		}
+
+		/* switch back to kernel page directory */
 		cur->pagedir = NULL;
 
-		pagedir_activate (NULL);
-		
-		pagedir_destroy (pd);
+		pagedir_activate(NULL);
+
+		pagedir_destroy(pd);
 	}
 }
 

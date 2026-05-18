@@ -4,6 +4,7 @@
 #include "threads/synch.h"
 
 extern struct lock fs_lock; 
+extern struct lock filesys_lock;
 
 void syscall_init (void);
 

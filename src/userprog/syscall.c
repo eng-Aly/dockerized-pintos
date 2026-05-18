@@ -45,9 +45,14 @@ static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
 
+
+
+static bool sys_create (const char *file, unsigned initial_size);
+static bool sys_remove (const char *file);
+static int  sys_open   (const char *file);
 /* ---------- Global Locks ---------- */
 
-static struct lock filesys_lock;
+struct lock filesys_lock;
 struct lock fs_lock;
 
 /* ---------- Init ---------- */
@@ -101,7 +106,27 @@ syscall_handler (struct intr_frame *f)
         f->eax = process_wait((tid_t) args[0]);
 
         break;
+      /* ---------- File Syscalls ---------- */
+      case SYS_OPEN:
+        get_args(f->esp, args, 1);
+        validate_string((const char *) args[0]);
+        args[0] = validate_uaddr((const void *) args[0]);
+        f->eax = sys_open((const char *) args[0]);
+        break; 
 
+      case SYS_CREATE:
+        get_args(f->esp, args, 2);
+        validate_string((const char *) args[0]);
+        args[0] = validate_uaddr((const void *) args[0]);
+        f->eax = sys_create((const char *) args[0], (unsigned) args[1]);
+        break;
+
+      case SYS_REMOVE:
+        get_args(f->esp, args, 1);
+        validate_string((const char *) args[0]);
+        args[0] = validate_uaddr((const void *) args[0]);
+        f->eax = sys_remove((const char *) args[0]);
+        break;
       /* ---------- File Syscalls ---------- */
 
       case SYS_FILESIZE:
@@ -405,4 +430,74 @@ sys_close (int fd)
 
   t->fd_table[fd]->file = NULL;
   t->fd_table[fd]->fd = -1;
+}
+/*create functions for  create,open and remove*/
+static bool
+sys_create (const char *file, unsigned initial_size)
+{
+    validate_string(file);
+
+    lock_acquire(&filesys_lock);
+
+    bool success = filesys_create(file, initial_size);
+
+    lock_release(&filesys_lock);
+
+    return success;
+}
+
+static bool
+sys_remove (const char *file)
+{
+  lock_acquire (&filesys_lock);
+  bool success = filesys_remove (file);
+  lock_release (&filesys_lock);
+  return success;
+}
+
+static int
+sys_open (const char *file)
+{
+    validate_string(file);
+
+    lock_acquire(&filesys_lock);
+
+    struct file *f = filesys_open(file);
+
+    lock_release(&filesys_lock);
+
+    if (f == NULL)
+        return -1;
+
+    struct thread *t = thread_current();
+
+    int fd;
+
+    for (fd = 2; fd < MAX_FILES; fd++)
+    {
+        if (t->fd_table[fd] == NULL)
+            break;
+    }
+
+    if (fd == MAX_FILES)
+    {
+        file_close(f);
+        return -1;
+    }
+
+    struct file_descriptor *fd_entry =
+        malloc(sizeof(struct file_descriptor));
+
+    if (fd_entry == NULL)
+    {
+        file_close(f);
+        return -1;
+    }
+
+    fd_entry->fd = fd;
+    fd_entry->file = f;
+
+    t->fd_table[fd] = fd_entry;
+
+    return fd;
 }
