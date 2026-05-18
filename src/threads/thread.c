@@ -188,7 +188,7 @@ thread_create (const char *name, int priority,
      Do this atomically so intermediate values for the 'stack' 
      member cannot be observed. */
 	old_level = intr_disable ();
-
+	// here are the only place child and parent thread interact with each other, so we can use the stack to pass the arguments for the child thread to execute 
 	/* Stack frame for kernel_thread(). */
 	kf = alloc_frame (t, sizeof *kf);
 	kf->eip = NULL;
