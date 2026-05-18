@@ -147,7 +147,16 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
+  ///// //////
+  if (user) 
+    {
+      /* The user program caused a page fault (bad pointer, bad jump).
+         Gracefully kill it with status -1. */
+      struct thread *cur = thread_current();
+      cur->exit_status = -1;
+      printf("%s: exit(-1)\n", cur->name);
+      thread_exit();
+    }
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

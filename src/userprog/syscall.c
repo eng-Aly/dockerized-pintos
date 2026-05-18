@@ -16,6 +16,7 @@
 
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/malloc.h"
 
 #define ERROR -1
 
@@ -298,6 +299,7 @@ static int
 sys_read (int fd, void *buffer, unsigned size)
 {
   validate_buffer (buffer, size);
+  if (fd < 0 || fd >= MAX_FILES || fd == 1) return -1;
 
   if (fd == 0)
     {
@@ -310,7 +312,7 @@ sys_read (int fd, void *buffer, unsigned size)
 
       return size;
     }
-
+  if (thread_current ()->fd_table[fd] == NULL) return -1;
   struct file *f = thread_current ()->fd_table[fd]->file;
 
   if (f == NULL)
@@ -332,11 +334,15 @@ sys_write (int fd, const void *buffer, unsigned size)
 {
   validate_buffer (buffer, size);
 
+  if (fd < 0 || fd >= MAX_FILES || fd == 0) return -1;
+
   if (fd == 1)
     {
       putbuf (buffer, size);
       return size;
     }
+
+  if (thread_current ()->fd_table[fd] == NULL) return -1;
 
   struct file *f = thread_current ()->fd_table[fd]->file;
 
