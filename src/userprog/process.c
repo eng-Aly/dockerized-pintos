@@ -31,24 +31,58 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp, char** s
 tid_t
 process_execute (const char *file_name) 
 {
-	char *fn_copy;
+	struct exec_info *exec;
 	tid_t tid;
 
+
+	/* allocate shared structure */
+	exec = malloc(sizeof(struct exec_info));
+
+	if (exec == NULL)
+		return TID_ERROR;
 	/* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
-	if (fn_copy == NULL)
+	exec->file_name = palloc_get_page (0);
+	if (exec->file_name == NULL)
+	{
+		free(exec);
 		return TID_ERROR;
-	strlcpy (fn_copy, file_name, PGSIZE);
+	}
+	strlcpy (exec->file_name, file_name, PGSIZE);
+
+	/* init synchronization */
+	sema_init(&exec->load_sema, 0);
+
+	exec->load_success = false;
 
 	/* Parsed file name */
 	char *save_ptr;
 	file_name = strtok_r((char *) file_name, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+	tid = thread_create (file_name, PRI_DEFAULT, start_process, exec);
 	if (tid == TID_ERROR)
-		palloc_free_page (fn_copy);
+	{
+		palloc_free_page (exec->file_name);
+		free(exec);
+		return TID_ERROR;
+	}
+
+
+	exec->tid = tid;
+
+	/* WAIT HERE until child finishes load() */
+	sema_down(&exec->load_sema);
+
+	/* child tells us load failed */
+	if (!exec->load_success)
+	{
+		free(exec);
+		return -1;
+	}
+
+
+	free(exec);
 	return tid;
 }
 
@@ -57,7 +91,9 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-	char *file_name = file_name_;
+	struct exec_info *exec = file_name_;
+	char *file_name = exec->file_name;
+
 	struct intr_frame if_;
 	bool success;
 
@@ -71,9 +107,13 @@ start_process (void *file_name_)
 	if_.cs = SEL_UCSEG;
 	if_.eflags = FLAG_IF | FLAG_MBS;
 	success = load (file_name, &if_.eip, &if_.esp, &save_ptr);
+	exec->load_success = success;
+
+	/* wake parent */
+	sema_up(&exec->load_sema);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	palloc_free_page(exec->file_name);
 	if (!success)
 		thread_exit ();
 
